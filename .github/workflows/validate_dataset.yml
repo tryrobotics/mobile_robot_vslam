@@ -1,0 +1,62 @@
+name: Validate SLAM Dataset
+
+# This workflow runs on any push to the main branch
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  validate-dataset:
+    runs-on: ubuntu-latest
+    steps:
+      # Step 1: Check out the repository's code
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # Step 2: CRITICAL - Pull the actual large files from LFS
+      # Without this, you will only have the tiny pointer files
+      - name: Pull LFS files
+        run: git lfs pull
+
+      # Step 3: Find the name of the most recently added folder
+      # This assumes the commit message is "Add new dataset: folder-name"
+      - name: Get latest dataset folder name
+        id: get_folder
+        run: |
+          COMMIT_MSG=$(git log -1 --pretty=%B)
+          FOLDER_NAME=$(echo "$COMMIT_MSG" | sed -n 's/Add new dataset: //p')
+          echo "folder=$FOLDER_NAME" >> $GITHUB_OUTPUT
+
+      # Step 4: Validate the contents of the new folder
+      - name: Check for required files
+        run: |
+          FOLDER="${{ steps.get_folder.outputs.folder }}"
+          echo "Validating contents of folder: $FOLDER"
+
+          if [ ! -d "$FOLDER" ]; then
+            echo "Error: Dataset folder '$FOLDER' not found in repository!"
+            exit 1
+          fi
+
+          if [ ! -f "$FOLDER/T01.txt" ]; then
+            echo "Error: T01.txt is missing!"
+            exit 1
+          fi
+
+          if [ ! -f "$FOLDER/imu0/data.csv" ]; then
+            echo "Error: imu0/data.csv is missing!"
+            exit 1
+          fi
+
+          if [ ! -f "$FOLDER/cam0/data.csv" ]; then
+            echo "Error: cam0/data.csv is missing!"
+            exit 1
+          fi
+
+          if ! ls "$FOLDER/cam0/data"/*.png >/dev/null 2>&1; then
+            echo "Error: No PNG images found!"
+            exit 1
+          fi
+
+          echo "Validation successful: All required files are present."
